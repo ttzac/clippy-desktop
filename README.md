@@ -9,9 +9,12 @@ Electron shell + TypeScript + PixiJS renderer, with GitHub Releases auto-update.
 npm install
 npm start          # builds the renderer (Vite) then launches Electron
 npm run typecheck
+npm test            # state machine unit tests (vitest)
 ```
 
-Auto-update is disabled when running unpackaged. `CLIPPY_SMOKE=<file.png> npm start` captures the window to a PNG and exits (dev smoke test).
+Auto-update is disabled when running unpackaged.
+
+Tray menu > **Play animation** triggers any state for preview. Dev smoke test: `CLIPPY_SMOKE_DIR=<dir> CLIPPY_SMOKE_STATES="happy@430,sleeping@5200" npx electron .` plays each state, captures a PNG after N ms, and exits (`CLIPPY_SMOKE_TRACE=1` logs the active state; unpackaged builds expose `window.__clippy`).
 
 ## Architecture
 
@@ -20,14 +23,16 @@ src/main.js             Electron main: transparent window, click-through, drag, 
 src/preload.js          contextBridge API (window.clippy)
 src/renderer/
   character/            clippyShape (master silhouette), ClippyRig (deformable wire + eyes), pose (the Pose contract)
-  animation/            Spring (damped oscillator), Controller (idle + drag/landing -> Pose each frame)
+  animation/            Spring, Controller (idle + drag/landing -> base Pose), StateMachine (pure, tested),
+                        states/ (interaction, ai, ambient), ease helpers
+  effects/PixiFx.ts     pooled particles (sparkles, Zs, "!", shock lines) + thought-bubble prop
   ui/bubble.ts          speech bubble
   main.ts               boot, render loop, input, updater wiring
 ```
 
 **Design decision: procedural vector rig, not sprite frames.** Clippy is a single polyline sampled from the master silhouette and
 deformed every frame (head lean that flexes the wire, travelling ripple, squash/stretch about the base, eye/brow rig).
-Animations only produce a `Pose`; the rig only consumes one. This keeps the character perfectly consistent across states,
+Each frame the `Controller` makes the base idle pose, the `StateMachine` layers active states over it (cross-faded by weight), and the rig draws the result. States only produce a `PoseMod`; the rig only consumes a `Pose`. This keeps the character perfectly consistent across states,
 is resolution independent, and means new states are code + timing, not new art. A new character or pack would supply its own
 rig + controller against the same `Pose` contract.
 
@@ -45,8 +50,13 @@ settled. The main process polls the cursor at 20 Hz and only sends changes. Not 
 | Tray icon + show/hide/update/quit | Done |
 | Auto-update via GitHub Releases + release workflow | Done, untested end to end |
 | Idle animation | Done (first pass; art direction still to polish) |
-| 22 other animation states, state machine, transitions | **Not started** |
-| Particles/effects (Z's, steam, confetti, sparks) | Not started |
+| State machine: priorities, interruption, cooldowns, min/extend duration, redirect (sleeping -> shocked), cross-fade | Done, 9 unit tests |
+| States: curious, happy, thinking, talking, sleeping, shocked, dragging | Done, captured and reviewed in Electron; not yet judged in motion by a human at 60 fps |
+| Triggers: hover -> curious, click -> happy, 3 fast clicks -> shocked, 2 min of no cursor movement -> sleeping (wakes on cursor movement), bubble text -> talking | Done |
+| Particles: sparkles, Zs, "!", shock lines, thought cloud | Done |
+| Thinking "scratches head" (needs an arm/hand), typing keyboard, waking stretch | Not done: thinking is gaze + sway + thought cloud only |
+| Remaining states: laughing, typing, waking, angry, confused, sad, dancing, falling, landing (partly in Controller), hiding, peeking, celebrating, listening, error, victory | **Not started** |
+| Steam, confetti, sparks, question marks, sunglasses accessory | Not started |
 | Personality engine (100+ lines, cooldowns, triggers) | Not started |
 | AI chat, streaming, provider layer, voice, approvals | Not started |
 | Fullscreen-app detection, multi-monitor testing, start with Windows, size setting, quiet mode | Not started |
