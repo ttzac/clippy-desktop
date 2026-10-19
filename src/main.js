@@ -18,6 +18,8 @@ let win = null;
 let tray = null;
 let manualCheck = false;
 let dragOrigin = null;
+// Dev smoke runs ignore the real mouse entirely so a parked cursor can't trigger hover/click reactions mid-capture.
+const SMOKE_STATES = !!process.env.CLIPPY_SMOKE_STATES && !app.isPackaged;
 
 // ---------- settings (position, chattiness) ----------
 const DEFAULTS = { chattiness: 'normal', size: 'medium' };
@@ -95,8 +97,10 @@ function createWindow() {
   });
   win.setAlwaysOnTop(true, 'screen-saver');
   // Start click-through; the renderer turns capture on while the pointer is over Clippy.
-  win.setIgnoreMouseEvents(true, { forward: true });
+  win.setIgnoreMouseEvents(true, SMOKE_STATES ? undefined : { forward: true });
   win.loadFile(path.join(__dirname, '..', 'dist-renderer', 'index.html'), app.isPackaged ? undefined : { query: { debug: '1' } });
+  // Chromium persists page zoom per origin and that would override our setting; settings.json is the source of truth.
+  win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor(scale));
   win.once('ready-to-show', () => win.showInactive());
 
   // Dev/CI smoke test. CLIPPY_SMOKE=<png path> captures the idle window, then exits.
@@ -107,10 +111,15 @@ function createWindow() {
       await sleep(2500);
       const dir = process.env.CLIPPY_SMOKE_DIR || '.';
       let i = 0;
+      let hideKey = null;
       for (const spec of process.env.CLIPPY_SMOKE_STATES.split(',')) {
         const [id, at] = spec.split('@');
+        if (process.env.CLIPPY_SMOKE_NO_BUBBLE) {
+          if (hideKey) { await win.webContents.removeInsertedCSS(hideKey); hideKey = null; }
+          hideKey = await win.webContents.insertCSS('#bubble{display:none!important}');
+        }
         send('debug:play', { id: 'stop' });
-        await sleep(1500);
+        await sleep(process.env.CLIPPY_SMOKE_NO_BUBBLE ? 3200 : 1500); // long enough for the last state's particles to die
         if (id.startsWith('say:')) await win.webContents.executeJavaScript(`window.__clippy.chat(${JSON.stringify(id.slice(4))}, true)`);
         else send('debug:play', { id, duration: 8 });
         const steps = Math.max(1, Math.floor((Number(at) || 500) / 500));
@@ -167,6 +176,7 @@ function startCursorFeed() {
 
 function registerWindowIpc() {
   ipcMain.on('mouse:ignore', (_e, ignore) => {
+    if (SMOKE_STATES) return;
     if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(!!ignore, ignore ? { forward: true } : undefined);
   });
   ipcMain.on('drag:start', () => { dragOrigin = { pos: win.getPosition(), cursor: screen.getCursorScreenPoint() }; });
@@ -319,6 +329,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => { if (win) win.showInactive(); });
   app.whenReady().then(() => {
     scale = scaleFor(loadSettings().size);
+    if (process.env.CLIPPY_SCALE && !app.isPackaged) scale = Number(process.env.CLIPPY_SCALE) || scale; // dev: crisp screenshots
     registerWindowIpc();
     createWindow();
     createTray();

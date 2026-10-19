@@ -1,22 +1,82 @@
-# Clippy Desktop
+<p align="center">
+  <img src="docs/hero.png" alt="Clippy Desktop: a silver paperclip with opinions" width="100%">
+</p>
 
-An animated 2D desktop companion: a living silver paperclip on a transparent, always-on-top window.
-Electron shell + TypeScript + PixiJS renderer, with GitHub Releases auto-update.
+<p align="center">
+  <img alt="Electron" src="https://img.shields.io/badge/Electron-44-47848F?logo=electron&logoColor=white">
+  <img alt="PixiJS" src="https://img.shields.io/badge/PixiJS-8-E72264?logo=pixijs&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-26%20passing-2ea44f">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white">
+  <img alt="Sprites" src="https://img.shields.io/badge/sprites-0-ff69b4">
+</p>
 
-## Run
+<h3 align="center">A silver paperclip with opinions, living on your desktop.<br>Helpful first, funny second.</h3>
 
-```
+Clippy Desktop is a transparent, always-on-top desktop companion. He floats above your windows, follows your cursor with his eyes, reacts when you poke him, gets sleepy when you leave, and has **118 original things to say** about it.
+
+He is not a GIF. The whole character is a single wire **drawn and bent live every frame**: head lean that flexes the clip, squash and stretch on every hop, eyes that ride the curve. No sprite sheets, no frame-by-frame art, so he looks identical in every mood and stays razor sharp at any size.
+
+## Meet the cast
+
+| <img src="docs/states/idle.png" width="130" alt="Idle"> | <img src="docs/states/curious.png" width="130" alt="Curious"> | <img src="docs/states/happy.png" width="130" alt="Happy"> | <img src="docs/states/thinking.png" width="130" alt="Thinking"> | <img src="docs/states/talking.png" width="130" alt="Talking"> | <img src="docs/states/sleeping.png" width="130" alt="Sleeping"> | <img src="docs/states/shocked.png" width="130" alt="Shocked"> |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Idle** | **Curious** | **Happy** | **Thinking** | **Talking** | **Sleeping** | **Shocked** |
+| <sub>Breathes, floats, blinks, and watches your cursor across the whole desktop.</sub> | <sub>Hover over him. He tilts toward you, brows up, and tiptoes.</sub> | <sub>Click him. Three hops, sparkle eyes, a grin, confetti-ish sparkles.</sub> | <sub>Gaze up, brow cocked, thought cloud overhead.</sub> | <sub>Mouth flaps to the rhythm of whatever he says.</sub> | <sub>Two minutes of no cursor movement and he nods off, snoring Zs.</sub> | <sub>Click him three times fast, or wake him up. Jump, "!", pinprick pupils.</sub> |
+
+## He talks
+
+<p align="center"><img src="docs/bubble.png" width="360" alt="Clippy delivering a quip in a speech bubble"></p>
+
+> *"Ah, another opportunity to introduce 47 new bugs."*
+>
+> *"WE DID IT. Mostly you. But emotionally, me."*
+>
+> *"Fine. I'll just sit here. Digitally unemployed."*
+
+Quips are triggered by what you do (click, hover, drag, go idle, quit), never repeat until he has run out of lines, and back off when ignored. Turn the volume with **tray > Chattiness**: Quiet, Low, Normal, or Chatty.
+
+## Features
+
+- **Lives on your desktop**: transparent, borderless, click-through everywhere except Clippy and his speech bubble
+- **Drag him anywhere**: he leans into the motion, wobbles, and lands with a squash. He remembers where you left him
+- **Eyes that follow your cursor** across all your monitors, with blinks, double-blinks, and wandering glances
+- **A real animation state machine**: priorities, interruption, cooldowns, cross-fades, and redirects (poke a sleeping Clippy and he startles awake instead of politely changing pose)
+- **Resizable**: tray > Size (Small / Medium / Large)
+- **Frugal**: 60 fps while moving, 30 fps when settled
+- **Auto-updates** from GitHub Releases
+
+## Run him
+
+```bash
+git clone https://github.com/ttzac/clippy-desktop
+cd clippy-desktop
 npm install
-npm start          # builds the renderer (Vite) then launches Electron
-npm run typecheck
-npm test            # state machine unit tests (vitest)
+npm start
 ```
 
-Auto-update is disabled when running unpackaged.
+Right-click his tray icon for **Say something**, **Play animation**, **Size**, **Chattiness**, and **Quit** (he has a goodbye line).
 
-Tray menu > **Play animation** triggers any state for preview. Dev smoke test: `CLIPPY_SMOKE_DIR=<dir> CLIPPY_SMOKE_STATES="happy@430,sleeping@5200" npx electron .` plays each state, captures a PNG after N ms, and exits (`CLIPPY_SMOKE_TRACE=1` logs the active state; unpackaged builds expose `window.__clippy`).
+Want an installer? `npm run dist` builds `dist/Clippy Desktop Setup x.y.z.exe`.
 
-## Architecture
+## How it works
+
+```mermaid
+flowchart LR
+  A[Cursor, clicks, drag, timers] --> B[Triggers]
+  B --> C[State machine]
+  B --> D[Personality engine]
+  E[Idle controller + springs] --> F((Pose))
+  C --> F
+  D --> G[Speech bubble]
+  D -. talk .-> C
+  F --> H[Wire rig]
+  H --> I[PixiJS canvas on a transparent window]
+```
+
+Every frame the idle controller produces a base pose, the state machine layers whatever Clippy is currently feeling on top (cross-faded), and the rig bends the paperclip to match. Adding a mood is code and timing, not new art.
+
+### Code map
 
 ```
 src/main.js             Electron main: transparent window, click-through, drag, tray, position memory, updater
@@ -40,7 +100,19 @@ rig + controller against the same `Pose` contract.
 **Performance:** the ticker runs at 60 fps while anything is moving (drag, blink, hover, spring energy) and drops to 30 fps when
 settled. The main process polls the cursor at 20 Hz and only sends changes. Not yet measured with a profiler (see status).
 
-## Status
+## Dev tools
+
+```bash
+npm test            # state machine + personality engine
+npm run typecheck
+```
+
+`CLIPPY_SMOKE_DIR=<dir> CLIPPY_SMOKE_STATES="happy@430,sleeping@5200" npx electron .` plays each state, captures a PNG after N ms, and exits. `npx electron scripts/make-hero.js <dir>` rebuilds the banner and state images in `docs/` from those captures.
+
+<details>
+<summary><b>Roadmap and honest status</b></summary>
+
+
 
 | Area | State |
 |---|---|
@@ -67,6 +139,8 @@ settled. The main process polls the cursor at 20 Hz and only sends changes. Not 
 | Asset validation script, audio | N/A yet (no raster assets; the character is procedural) |
 | Resource measurements (CPU/GPU/RAM) | Not measured |
 | Tauri migration | Deliberately not done: the Electron shell and update pipeline already work |
+
+</details>
 
 ## Release (auto-update)
 
