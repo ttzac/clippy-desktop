@@ -4,14 +4,46 @@ const path = require('path');
 const fs = require('fs');
 
 const WIN_W = 340;
-const WIN_H = 380;
+const WIN_H = 420;
 const UPDATE_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const CURSOR_POLL_MS = 50;
 
 let win = null;
 let tray = null;
+let manualCheck = false;
+let dragOrigin = null;
 
-// The repo is private, so electron-updater needs a read-only token at runtime.
-// Provide it via the GH_TOKEN env var or {userData}/config.json: { "updateToken": "..." }
+// ---------- settings (last position) ----------
+const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
+
+function loadSettings() {
+  try { return JSON.parse(fs.readFileSync(settingsPath(), 'utf8')); } catch { return {}; }
+}
+
+let saveTimer = null;
+function saveSettings(patch) {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { fs.writeFileSync(settingsPath(), JSON.stringify({ ...loadSettings(), ...patch })); } catch { /* ignore */ }
+  }, 250);
+}
+
+// Restore the saved spot only if it is still on a connected display.
+function initialPosition() {
+  const saved = loadSettings();
+  if (Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+    const cx = saved.x + WIN_W / 2;
+    const cy = saved.y + WIN_H / 2;
+    const onScreen = screen.getAllDisplays().some(({ workArea: a }) =>
+      cx >= a.x && cx < a.x + a.width && cy >= a.y && cy < a.y + a.height);
+    if (onScreen) return { x: saved.x, y: saved.y };
+  }
+  const { workArea } = screen.getPrimaryDisplay();
+  return { x: workArea.x + workArea.width - WIN_W - 24, y: workArea.y + workArea.height - WIN_H - 8 };
+}
+
+// ---------- updater token (private repo) ----------
+// Provide it via GH_TOKEN or {userData}/config.json: { "updateToken": "..." }
 function loadUpdateToken() {
   if (process.env.GH_TOKEN) return;
   try {
@@ -24,13 +56,15 @@ function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 
+// ---------- window ----------
 function createWindow() {
-  const { workArea } = screen.getPrimaryDisplay();
+  const { x, y } = initialPosition();
   win = new BrowserWindow({
     width: WIN_W,
     height: WIN_H,
-    x: workArea.x + workArea.width - WIN_W - 24,
-    y: workArea.y + workArea.height - WIN_H - 8,
+    x,
+    y,
+    show: false,
     transparent: true,
     frame: false,
     resizable: false,
@@ -44,30 +78,109 @@ function createWindow() {
     },
   });
   win.setAlwaysOnTop(true, 'screen-saver');
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // Start click-through; the renderer turns capture on while the pointer is over Clippy.
+  win.setIgnoreMouseEvents(true, { forward: true });
+  win.loadFile(path.join(__dirname, '..', 'dist-renderer', 'index.html'));
+  win.once('ready-to-show', () => win.showInactive());
+
+  // Dev/CI smoke test: CLIPPY_SMOKE=<png path> captures the window after a few seconds, then exits.
+  if (process.env.CLIPPY_SMOKE && !app.isPackaged) {
+    win.webContents.once('did-finish-load', () => setTimeout(async () => {
+      const img = await win.webContents.capturePage();
+      fs.writeFileSync(process.env.CLIPPY_SMOKE, img.toPNG());
+      console.log('[smoke] captured', img.getSize());
+      app.exit(0);
+    }, 3500));
+  }
+
+  if (!app.isPackaged) {
+    win.webContents.on('console-message', (...args) => {
+      const e = args[0];
+      console.log('[renderer]', e && e.message !== undefined ? e.message : args[2]);
+    });
+    win.webContents.on('render-process-gone', (_e, d) => console.error('[renderer gone]', d.reason));
+  }
+}
+
+function startCursorFeed() {
+  let last = '';
+  setInterval(() => {
+    if (!win || win.isDestroyed() || !win.isVisible()) return;
+    const p = screen.getCursorScreenPoint();
+    const b = win.getBounds();
+    const rel = { x: p.x - b.x, y: p.y - b.y };
+    const key = `${rel.x},${rel.y}`;
+    if (key === last) return;
+    last = key;
+    send('cursor:pos', rel);
+  }, CURSOR_POLL_MS);
+}
+
+function registerWindowIpc() {
+  ipcMain.on('mouse:ignore', (_e, ignore) => {
+    if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(!!ignore, ignore ? { forward: true } : undefined);
+  });
+  ipcMain.on('drag:start', () => { dragOrigin = win.getPosition(); });
+  ipcMain.on('drag:move', (_e, { dx, dy }) => {
+    if (!dragOrigin) return;
+    // setBounds with a fixed size avoids the DPI size-drift setPosition causes on scaled displays.
+    win.setBounds({ x: Math.round(dragOrigin[0] + dx), y: Math.round(dragOrigin[1] + dy), width: WIN_W, height: WIN_H });
+  });
+  ipcMain.on('drag:end', () => {
+    dragOrigin = null;
+    const [x, y] = win.getPosition();
+    saveSettings({ x, y });
+  });
+  ipcMain.handle('app:version', () => app.getVersion());
+  ipcMain.on('app:quit', () => app.quit());
+}
+
+// ---------- tray ----------
+// Tiny generated silver-clip-ish icon so the tray entry is visible without shipping a binary asset.
+function trayIcon() {
+  const size = 32;
+  const buf = Buffer.alloc(size * size * 4);
+  const put = (x, y, r, g, b, a = 255) => { const i = (y * size + x) * 4; buf[i] = b; buf[i + 1] = g; buf[i + 2] = r; buf[i + 3] = a; };
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const d = Math.hypot(x - 15.5, y - 15.5);
+      if (d < 14) put(x, y, 36, 40, 47);
+      if (d < 12) put(x, y, 196, 203, 211);
+    }
+  }
+  for (const [ex, ey] of [[11, 13], [20, 13]]) {
+    for (let y = -3; y <= 3; y++) for (let x = -2; x <= 2; x++) put(ex + x, ey + y, 255, 255, 255);
+    put(ex, ey + 1, 20, 22, 27); put(ex, ey + 2, 20, 22, 27);
+  }
+  return nativeImage.createFromBitmap(buf, { width: size, height: size });
 }
 
 function createTray() {
-  tray = new Tray(nativeImage.createEmpty());
+  tray = new Tray(trayIcon());
   tray.setToolTip(`Clippy Desktop v${app.getVersion()}`);
+  const toggle = () => (win.isVisible() ? win.hide() : win.showInactive());
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: `Clippy Desktop v${app.getVersion()}`, enabled: false },
-    { label: 'Show / hide', click: () => (win.isVisible() ? win.hide() : win.show()) },
-    { label: 'Check for updates', click: () => checkForUpdates(true) },
+    { label: 'Show / hide', click: toggle },
+    { label: 'Check for updates', click: () => { win.showInactive(); checkForUpdates(true); } },
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() },
   ]));
-  tray.on('click', () => (win.isVisible() ? win.hide() : win.show()));
+  tray.on('click', toggle);
+}
+
+// ---------- auto-update ----------
+function sendUpdate(status) {
+  send('update:status', { ...status, manual: manualCheck });
 }
 
 function checkForUpdates(manual = false) {
+  manualCheck = manual;
   if (!app.isPackaged) {
-    if (manual) send('update:status', { state: 'dev', message: 'Updates are disabled in dev mode.' });
+    if (manual) sendUpdate({ state: 'dev', message: 'Updates are disabled in dev mode.' });
     return;
   }
-  autoUpdater.checkForUpdates().catch((err) => {
-    send('update:status', { state: 'error', message: String(err.message || err) });
-  });
+  autoUpdater.checkForUpdates().catch((err) => sendUpdate({ state: 'error', message: String(err.message || err) }));
 }
 
 function setupAutoUpdate() {
@@ -75,30 +188,30 @@ function setupAutoUpdate() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on('checking-for-update', () => send('update:status', { state: 'checking' }));
-  autoUpdater.on('update-available', (info) => send('update:status', { state: 'available', version: info.version }));
-  autoUpdater.on('update-not-available', () => send('update:status', { state: 'none' }));
-  autoUpdater.on('download-progress', (p) => send('update:status', { state: 'downloading', percent: Math.round(p.percent) }));
-  autoUpdater.on('update-downloaded', (info) => send('update:status', { state: 'ready', version: info.version }));
-  autoUpdater.on('error', (err) => send('update:status', { state: 'error', message: String(err.message || err) }));
+  autoUpdater.on('checking-for-update', () => sendUpdate({ state: 'checking' }));
+  autoUpdater.on('update-available', (info) => sendUpdate({ state: 'available', version: info.version }));
+  autoUpdater.on('update-not-available', () => sendUpdate({ state: 'none' }));
+  autoUpdater.on('download-progress', (p) => sendUpdate({ state: 'downloading', percent: Math.round(p.percent) }));
+  autoUpdater.on('update-downloaded', (info) => sendUpdate({ state: 'ready', version: info.version }));
+  autoUpdater.on('error', (err) => sendUpdate({ state: 'error', message: String(err.message || err) }));
 
   ipcMain.on('update:check', () => checkForUpdates(true));
   ipcMain.on('update:install', () => autoUpdater.quitAndInstall());
 
   checkForUpdates();
-  setInterval(checkForUpdates, UPDATE_INTERVAL_MS);
+  setInterval(() => checkForUpdates(), UPDATE_INTERVAL_MS);
 }
 
-const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) {
+// ---------- lifecycle ----------
+if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => { if (win) win.show(); });
+  app.on('second-instance', () => { if (win) win.showInactive(); });
   app.whenReady().then(() => {
-    ipcMain.handle('app:version', () => app.getVersion());
-    ipcMain.on('app:quit', () => app.quit());
+    registerWindowIpc();
     createWindow();
     createTray();
+    startCursorFeed();
     setupAutoUpdate();
   });
   app.on('window-all-closed', () => app.quit());

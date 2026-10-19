@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clippy: Build Edition</title>
+<style>
+  :root { --desk:#008080; --win:#c0c0c0; --tip:#ffffe1; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; background:var(--desk); font-family:Tahoma,"MS Sans Serif",Arial,sans-serif; font-size:14px; overflow:hidden; }
+  .window { position:absolute; top:40px; left:40px; width:min(560px, calc(100vw - 80px)); background:var(--win);
+    border:2px solid; border-color:#fff #404040 #404040 #fff; box-shadow:1px 1px 0 #000; }
+  .title { background:linear-gradient(90deg,#000080,#1084d0); color:#fff; font-weight:bold; padding:3px 6px; display:flex; justify-content:space-between; }
+  .title b { background:var(--win); color:#000; width:16px; height:14px; line-height:12px; text-align:center; border:1px solid; border-color:#fff #404040 #404040 #fff; font-size:11px; }
+  .body { padding:16px; }
+  .body h1 { margin:0 0 8px; font-size:20px; }
+  .doc { background:#fff; border:2px inset #888; padding:12px; height:180px; color:#222; line-height:1.5; }
+  .doc i { color:#888; }
+  #clippy-wrap { position:fixed; right:30px; bottom:20px; display:flex; flex-direction:column; align-items:flex-end; z-index:10; }
+  #bubble { position:relative; background:var(--tip); border:1px solid #000; border-radius:8px; padding:12px 14px; width:290px; margin-bottom:14px;
+    box-shadow:3px 3px 0 rgba(0,0,0,.35); line-height:1.4; }
+  #bubble::after { content:""; position:absolute; bottom:-14px; right:50px; border:7px solid transparent; border-top:14px solid #000; border-bottom:0; }
+  #bubble::before { content:""; position:absolute; bottom:-12px; right:51px; border:6px solid transparent; border-top:12px solid var(--tip); border-bottom:0; z-index:1; }
+  #lead { font-weight:bold; margin-bottom:6px; }
+  .btns { display:flex; gap:6px; margin-top:10px; }
+  button { font:inherit; background:var(--win); border:2px solid; border-color:#fff #404040 #404040 #fff; padding:3px 10px; cursor:pointer; }
+  button:active { border-color:#404040 #fff #fff #404040; }
+  #clippy { width:90px; height:140px; cursor:pointer; margin-right:30px; transform-origin:50% 100%; }
+  #clippy.wiggle { animation:wig .6s; }
+  @keyframes wig { 20%{transform:rotate(-8deg)} 40%{transform:rotate(7deg)} 60%{transform:rotate(-5deg)} 80%{transform:rotate(3deg)} }
+  #clippy.bob { animation:bob 2.4s ease-in-out infinite; }
+  @keyframes bob { 50%{transform:translateY(-5px)} }
+  .lid { transform-origin:center; transform-box:fill-box; animation:blink 4s infinite; }
+  @keyframes blink { 0%,94%,100%{transform:scaleY(1)} 97%{transform:scaleY(.05)} }
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="title"><span>Build_Keynote_Notes.doc - Microsoft Word</span><b>x</b></div>
+  <div class="body">
+    <h1>Dear Developers,</h1>
+    <div class="doc">
+      We are thrilled to announce that everything is now Copilot.<br>
+      <i>(Click Clippy. He has thoughts.)</i><br><br>
+      Key takeaways from the keynote:<br>
+      1. <br>
+      2. <br>
+      3. Agents.
+    </div>
+  </div>
+</div>
+
+<div id="clippy-wrap">
+  <div id="bubble">
+    <div id="lead">It looks like you're attending Microsoft Build.</div>
+    <div id="msg"></div>
+    <div class="btns"><button id="next">Another one</button><button id="auto">Auto: on</button></div>
+  </div>
+  <svg id="clippy" class="bob" viewBox="0 0 90 140" aria-label="Clippy">
+    <path d="M58 82 V100 A18 18 0 0 1 22 100 V32 A22 22 0 0 1 66 32 V90 A9 9 0 0 1 48 90 V40" fill="none" stroke="#6b6f76" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M58 82 V100 A18 18 0 0 1 22 100 V32 A22 22 0 0 1 66 32 V90 A9 9 0 0 1 48 90 V40" fill="none" stroke="#c9ccd2" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <g class="lid"><ellipse cx="32" cy="46" rx="9" ry="11" fill="#fff" stroke="#222" stroke-width="1.5"/><circle id="pl" cx="32" cy="46" r="3.5" fill="#000"/></g>
+    <g class="lid"><ellipse cx="55" cy="46" rx="9" ry="11" fill="#fff" stroke="#222" stroke-width="1.5"/><circle id="pr" cx="55" cy="46" r="3.5" fill="#000"/></g>
+    <path d="M22 34 Q32 27 40 33 M48 33 Q57 26 65 33" fill="none" stroke="#222" stroke-width="2.2" stroke-linecap="round"/>
+  </svg>
+</div>
+
+<script>
+const jokes = [
+  "Would you like to add Copilot to that? I already did. It's in your toast.",
+  "Fun fact: Build is the one week a year every product gets an AI button, including the ones that were fine.",
+  "Don't worry, the live demo will work. It worked on 3 machines. Backstage. Last Tuesday.",
+  "Welcome to Build! Today we're announcing 400 things. You will remember 3 and one is a rename.",
+  "It looks like you're trying to ship an agent. Have you tried adding a second agent to supervise the first?",
+  "Reminder: 'agentic' is now a legally required word at this conference.",
+  "Satya said 'tokens per dollar per watt' and somewhere an investor felt a tingle.",
+  "I used to be the AI assistant nobody asked for. Now it's every product. I feel vindicated.",
+  "Teams, Azure AI Foundry, Copilot Studio, Copilot, the other Copilot... would you like me to explain the naming? Nobody can.",
+  "Pro tip: when the keynote WiFi dies, say 'edge computing' and nod.",
+  "It looks like you're writing a Build recap. Would you like me to turn it into 'Copilot, but for Copilot'?",
+  "WSL is open source now. I'm still a paperclip. Someone please open-source my feelings.",
+  "NPU. TOPS. Copilot+ PC. Please enjoy this slide of 14 numbers going up.",
+  "Hot take: the best feature announced at Build is the free swag tote bag.",
+  "You have 47 unread Build session recordings. Would you like to not watch them?",
+  "VS Code now has more AI than code. Ctrl+S to save, Ctrl+Shift+Y to apologise.",
+  "Looks like you're building a prototype in 5 minutes with an agent. And maintaining it forever without one.",
+  "Windows is now an 'open agentic platform'. It still asks to restart at the worst possible time.",
+  "I was retired in 2007. I was an AI assistant 18 years early. Where's my keynote slot?",
+  "The roadmap is clear: Copilot, Copilot, Copilot, and a surprise Copilot.",
+  "It looks like the breakout session is full. Would you like to watch it on-demand in 6 months?",
+  "MCP everywhere! Finally, a standard for connecting the thing you don't trust to the thing you can't audit.",
+  "Say 'one more thing' at Build and the thing will be a Copilot. Every time.",
+  "Everything is 'in preview'. Preview is the new GA. GA is a myth."
+];
+
+const msg = document.getElementById('msg'), lead = document.getElementById('lead');
+const clippy = document.getElementById('clippy');
+const leads = ["It looks like you're attending Microsoft Build.", "It looks like you're writing a keynote.", "It looks like you're hallucinating.", "It looks like you want to ship an agent.", "Hi! I'm Clippy. Again."];
+let order = [], timer, auto = true;
+
+function pick() {
+  if (!order.length) order = jokes.map((_, i) => i).sort(() => Math.random() - .5);
+  return jokes[order.pop()];
+}
+function say() {
+  lead.textContent = leads[Math.floor(Math.random() * leads.length)];
+  msg.textContent = pick();
+  clippy.classList.remove('wiggle'); void clippy.getBoundingClientRect(); clippy.classList.add('wiggle');
+  schedule();
+}
+function schedule() {
+  clearTimeout(timer);
+  if (auto) timer = setTimeout(say, 7000);
+}
+document.getElementById('next').onclick = say;
+clippy.onclick = say;
+document.getElementById('auto').onclick = e => {
+  auto = !auto; e.target.textContent = 'Auto: ' + (auto ? 'on' : 'off'); schedule();
+};
+
+// eyes follow cursor
+const pl = document.getElementById('pl'), pr = document.getElementById('pr');
+addEventListener('mousemove', e => {
+  const r = clippy.getBoundingClientRect();
+  const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height * .35);
+  const d = Math.hypot(dx, dy) || 1, k = Math.min(1, d / 200);
+  const ox = dx / d * 4 * k, oy = dy / d * 5 * k;
+  pl.setAttribute('cx', 32 + ox); pl.setAttribute('cy', 46 + oy);
+  pr.setAttribute('cx', 55 + ox); pr.setAttribute('cy', 46 + oy);
+});
+
+say();
+</script>
+</body>
+</html>

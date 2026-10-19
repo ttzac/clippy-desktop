@@ -8,9 +8,11 @@
   "license": "UNLICENSED",
   "private": true,
   "scripts": {
-    "start": "electron .",
-    "dist": "electron-builder --win --publish never",
-    "release": "electron-builder --win --publish always"
+    "build:renderer": "vite build",
+    "start": "npm run build:renderer && electron .",
+    "typecheck": "tsc --noEmit -p .",
+    "dist": "npm run build:renderer && electron-builder --win --publish never",
+    "release": "npm run build:renderer && electron-builder --win --publish always"
   },
   "build": {
     "appId": "au.com.trantech.clippy-desktop",
@@ -19,7 +21,9 @@
       "output": "dist"
     },
     "files": [
-      "src/**/*",
+      "src/main.js",
+      "src/preload.js",
+      "dist-renderer/**/*",
       "package.json"
     ],
     "win": {
@@ -39,11 +43,14 @@
     ]
   },
   "dependencies": {
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "pixi.js": "^8.22.0"
   },
   "devDependencies": {
     "electron": "^44.9.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
   },
   "allowScripts": {
     "electron@44.9.0": true
