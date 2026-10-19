@@ -3,8 +3,14 @@ const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 
-const WIN_W = 340;
-const WIN_H = 420;
+// The window is laid out at BASE size and uniformly scaled with the page zoom factor.
+const BASE_W = 340;
+const BASE_H = 420;
+const SIZES = [['small', 'Small', 0.6], ['medium', 'Medium', 0.75], ['large', 'Large', 1]];
+let scale = 0.75;
+const winW = () => Math.round(BASE_W * scale);
+const winH = () => Math.round(BASE_H * scale);
+const scaleFor = (id) => (SIZES.find(([k]) => k === id) || SIZES[1])[2];
 const UPDATE_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const CURSOR_POLL_MS = 50;
 
@@ -14,7 +20,7 @@ let manualCheck = false;
 let dragOrigin = null;
 
 // ---------- settings (position, chattiness) ----------
-const DEFAULTS = { chattiness: 'normal' };
+const DEFAULTS = { chattiness: 'normal', size: 'medium' };
 const CHATTINESS = [['quiet', 'Quiet (no chatter)'], ['low', 'Low'], ['normal', 'Normal'], ['high', 'Chatty']];
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 
@@ -41,14 +47,14 @@ function flushSettings() {
 function initialPosition() {
   const saved = loadSettings();
   if (Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
-    const cx = saved.x + WIN_W / 2;
-    const cy = saved.y + WIN_H / 2;
+    const cx = saved.x + winW() / 2;
+    const cy = saved.y + winH() / 2;
     const onScreen = screen.getAllDisplays().some(({ workArea: a }) =>
       cx >= a.x && cx < a.x + a.width && cy >= a.y && cy < a.y + a.height);
     if (onScreen) return { x: saved.x, y: saved.y };
   }
   const { workArea } = screen.getPrimaryDisplay();
-  return { x: workArea.x + workArea.width - WIN_W - 24, y: workArea.y + workArea.height - WIN_H - 8 };
+  return { x: workArea.x + workArea.width - winW() - 24, y: workArea.y + workArea.height - winH() - 8 };
 }
 
 // ---------- updater token (private repo) ----------
@@ -69,8 +75,8 @@ function send(channel, payload) {
 function createWindow() {
   const { x, y } = initialPosition();
   win = new BrowserWindow({
-    width: WIN_W,
-    height: WIN_H,
+    width: winW(),
+    height: winH(),
     x,
     y,
     show: false,
@@ -84,6 +90,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      zoomFactor: scale,
     },
   });
   win.setAlwaysOnTop(true, 'screen-saver');
@@ -150,7 +157,7 @@ function startCursorFeed() {
     if (!win || win.isDestroyed() || !win.isVisible()) return;
     const p = screen.getCursorScreenPoint();
     const b = win.getBounds();
-    const rel = { x: p.x - b.x, y: p.y - b.y };
+    const rel = { x: (p.x - b.x) / scale, y: (p.y - b.y) / scale }; // CSS px at the page's zoom
     const key = `${rel.x},${rel.y}`;
     if (key === last) return;
     last = key;
@@ -162,11 +169,14 @@ function registerWindowIpc() {
   ipcMain.on('mouse:ignore', (_e, ignore) => {
     if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(!!ignore, ignore ? { forward: true } : undefined);
   });
-  ipcMain.on('drag:start', () => { dragOrigin = win.getPosition(); });
-  ipcMain.on('drag:move', (_e, { dx, dy }) => {
+  ipcMain.on('drag:start', () => { dragOrigin = { pos: win.getPosition(), cursor: screen.getCursorScreenPoint() }; });
+  ipcMain.on('drag:move', () => {
     if (!dragOrigin) return;
+    const c = screen.getCursorScreenPoint();
+    const dx = c.x - dragOrigin.cursor.x;
+    const dy = c.y - dragOrigin.cursor.y;
     // setBounds with a fixed size avoids the DPI size-drift setPosition causes on scaled displays.
-    win.setBounds({ x: Math.round(dragOrigin[0] + dx), y: Math.round(dragOrigin[1] + dy), width: WIN_W, height: WIN_H });
+    win.setBounds({ x: Math.round(dragOrigin.pos[0] + dx), y: Math.round(dragOrigin.pos[1] + dy), width: winW(), height: winH() });
   });
   ipcMain.on('drag:end', () => {
     dragOrigin = null;
@@ -208,6 +218,20 @@ function requestQuit() {
   setTimeout(() => app.quit(), 3000); // fallback if the renderer never answers
 }
 
+// Resize about the bottom-centre so Clippy stays put on screen.
+function setSize(id) {
+  saveSettings({ size: id });
+  const next = scaleFor(id);
+  if (win && !win.isDestroyed() && next !== scale) {
+    const b = win.getBounds();
+    scale = next;
+    win.webContents.setZoomFactor(scale);
+    win.setBounds({ x: Math.round(b.x + (b.width - winW()) / 2), y: b.y + b.height - winH(), width: winW(), height: winH() });
+    saveSettings({ x: win.getPosition()[0], y: win.getPosition()[1] });
+  }
+  buildTrayMenu();
+}
+
 function setChattiness(level) {
   saveSettings({ chattiness: level });
   send('settings:changed', { chattiness: level });
@@ -222,12 +246,18 @@ function createTray() {
 }
 
 function buildTrayMenu() {
-  const current = { ...loadSettings(), ...pendingSettings }.chattiness;
+  const settings = { ...loadSettings(), ...pendingSettings };
+  const current = settings.chattiness;
+  const currentSize = settings.size;
   const toggle = () => (win.isVisible() ? win.hide() : win.showInactive());
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: `Clippy Desktop v${app.getVersion()}`, enabled: false },
     { label: 'Show / hide', click: toggle },
     { label: 'Say something', click: () => { win.showInactive(); send('personality:say', { category: 'ambient+wisdom' }); } },
+    {
+      label: 'Size',
+      submenu: SIZES.map(([id, label]) => ({ label, type: 'radio', checked: currentSize === id, click: () => setSize(id) })),
+    },
     {
       label: 'Chattiness',
       submenu: CHATTINESS.map(([id, label]) => ({ label, type: 'radio', checked: current === id, click: () => setChattiness(id) })),
@@ -288,6 +318,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', () => { if (win) win.showInactive(); });
   app.whenReady().then(() => {
+    scale = scaleFor(loadSettings().size);
     registerWindowIpc();
     createWindow();
     createTray();

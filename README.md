@@ -62,7 +62,8 @@ settled. The main process polls the cursor at 20 Hz and only sends changes. Not 
 | Personality triggers wired: startup, click, click-spam, hover, drag, drop, startled-awake, idle, sleep, wake, ambient, long session, update available/ready/up-to-date, quit, tray "Say something" | Done |
 | Personality lines written but not yet triggered: code editor opened, app crash, task complete (need permission-based desktop awareness), AI thinking/simple/error (Phase 6) | Pending |
 | AI chat, streaming, provider layer, voice, approvals | Not started |
-| Fullscreen-app detection, multi-monitor testing, start with Windows, size setting, quiet mode | Not started |
+| Size setting (tray > Size: Small 60% / Medium 75% default / Large 100%, scales the whole window via page zoom) and quiet mode (Chattiness > Quiet) | Done |
+| Fullscreen-app detection, multi-monitor testing, start with Windows | Not started |
 | Asset validation script, audio | N/A yet (no raster assets; the character is procedural) |
 | Resource measurements (CPU/GPU/RAM) | Not measured |
 | Tauri migration | Deliberately not done: the Electron shell and update pipeline already work |

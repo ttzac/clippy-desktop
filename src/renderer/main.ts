@@ -42,6 +42,10 @@ async function boot() {
   const placeRig = () => rig.setHome(app.screen.width / 2, app.screen.height - 28);
   placeRig();
   app.renderer.on('resize', placeRig);
+  // Page zoom (tray > Size) changes devicePixelRatio; keep the canvas crisp.
+  window.addEventListener('resize', () => {
+    if (app.renderer.resolution !== window.devicePixelRatio) app.renderer.resolution = window.devicePixelRatio;
+  });
 
   const ctrl = new Controller();
   const env: Env = { cursor: () => ctrl.cursorOffset(), anchor: (n) => rig.anchor(n), fx };
