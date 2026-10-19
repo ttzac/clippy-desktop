@@ -1,0 +1,12 @@
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font: 13px Tahoma, Arial, sans-serif; user-select: none; }
+body { display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; padding: 8px 24px 0 8px; box-sizing: border-box; }
+
+#bubble { background: #ffffe1; border: 1px solid #000; border-radius: 8px; padding: 10px 12px; width: 100%; margin-bottom: 14px; position: relative; box-shadow: 3px 3px 0 rgba(0,0,0,.3); -webkit-app-region: no-drag; }
+#bubble::after { content: ""; position: absolute; bottom: -14px; right: 40px; border: 7px solid transparent; border-top: 14px solid #000; border-bottom: 0; }
+.row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+button { font: inherit; background: #c0c0c0; border: 2px solid; border-color: #fff #404040 #404040 #fff; padding: 2px 8px; cursor: pointer; }
+button:active { border-color: #404040 #fff #fff #404040; }
+#version { margin-top: 6px; font-size: 10px; color: #777; }
+
+/* Drag the window by grabbing the character. */
+#character { width: 90px; height: 140px; margin-right: 20px; -webkit-app-region: drag; }

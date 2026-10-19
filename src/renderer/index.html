@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+  <title>Clippy Desktop</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Placeholder UI: swap the bubble/character/animations for the real design. -->
+  <div id="bubble">
+    <div id="text">Hi! I'm Clippy.</div>
+    <div class="row">
+      <button id="update-btn" hidden>Restart to update</button>
+      <button id="check-btn">Check for updates</button>
+      <button id="quit-btn">Quit</button>
+    </div>
+    <div id="version"></div>
+  </div>
+  <svg id="character" viewBox="0 0 90 140" aria-label="Clippy">
+    <path d="M58 82 V100 A18 18 0 0 1 22 100 V32 A22 22 0 0 1 66 32 V90 A9 9 0 0 1 48 90 V40" fill="none" stroke="#6b6f76" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M58 82 V100 A18 18 0 0 1 22 100 V32 A22 22 0 0 1 66 32 V90 A9 9 0 0 1 48 90 V40" fill="none" stroke="#c9ccd2" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <ellipse cx="32" cy="46" rx="9" ry="11" fill="#fff" stroke="#222" stroke-width="1.5"/><circle cx="32" cy="46" r="3.5"/>
+    <ellipse cx="55" cy="46" rx="9" ry="11" fill="#fff" stroke="#222" stroke-width="1.5"/><circle cx="55" cy="46" r="3.5"/>
+    <path d="M22 34 Q32 27 40 33 M48 33 Q57 26 65 33" fill="none" stroke="#222" stroke-width="2.2" stroke-linecap="round"/>
+  </svg>
+  <script src="renderer.js"></script>
+</body>
+</html>

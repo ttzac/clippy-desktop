@@ -1,0 +1,51 @@
+{
+  "name": "clippy-desktop",
+  "productName": "Clippy Desktop",
+  "version": "0.1.0",
+  "description": "Desktop Clippy buddy (Electron base with auto-update)",
+  "main": "src/main.js",
+  "author": "ttzac",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --publish never",
+    "release": "electron-builder --win --publish always"
+  },
+  "build": {
+    "appId": "au.com.trantech.clippy-desktop",
+    "productName": "Clippy Desktop",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ttzac",
+        "repo": "clippy-desktop",
+        "private": true
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3"
+  },
+  "allowScripts": {
+    "electron@44.9.0": true
+  }
+}
