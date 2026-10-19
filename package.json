@@ -12,7 +12,8 @@
     "start": "npm run build:renderer && electron .",
     "typecheck": "tsc --noEmit -p .",
     "dist": "npm run build:renderer && electron-builder --win --publish never",
-    "release": "npm run build:renderer && electron-builder --win --publish always"
+    "release": "npm run build:renderer && electron-builder --win --publish always",
+    "test": "vitest run"
   },
   "build": {
     "appId": "au.com.trantech.clippy-desktop",
@@ -50,7 +51,8 @@
     "electron": "^44.9.0",
     "electron-builder": "^26.15.3",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
   },
   "allowScripts": {
     "electron@44.9.0": true

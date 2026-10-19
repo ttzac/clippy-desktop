@@ -45,6 +45,12 @@ export class Controller {
     this.cursor = { x: dx, y: dy, at: this.t };
   }
 
+  /** The last cursor offset if it moved recently, else null. */
+  cursorOffset(): { x: number; y: number } | null {
+    const c = this.cursor;
+    return c && this.t - c.at < CURSOR_ATTENTION_S ? { x: c.x, y: c.y } : null;
+  }
+
   setHovered(h: boolean) {
     this.hovered = h;
     if (h) this.lastPoke = this.t;
@@ -119,6 +125,10 @@ export class Controller {
       lookY: this.lookY.value,
       browRaise: this.brow.value + (this.lookY.value < -0.4 ? 0.25 : 0),
       browTilt: 0,
+      mouthOpen: 0,
+      mouthSmile: 0,
+      sparkle: 0,
+      pupilScale: 1,
     };
   }
 

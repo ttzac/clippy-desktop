@@ -10,5 +10,6 @@ contextBridge.exposeInMainWorld('clippy', {
   dragMove: (dx, dy) => ipcRenderer.send('drag:move', { dx, dy }),
   dragEnd: () => ipcRenderer.send('drag:end'),
   onCursor: (cb) => ipcRenderer.on('cursor:pos', (_e, pos) => cb(pos)),
+  onPlay: (cb) => ipcRenderer.on('debug:play', (_e, req) => cb(req)),
   onUpdateStatus: (cb) => ipcRenderer.on('update:status', (_e, status) => cb(status)),
 });

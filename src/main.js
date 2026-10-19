@@ -80,11 +80,35 @@ function createWindow() {
   win.setAlwaysOnTop(true, 'screen-saver');
   // Start click-through; the renderer turns capture on while the pointer is over Clippy.
   win.setIgnoreMouseEvents(true, { forward: true });
-  win.loadFile(path.join(__dirname, '..', 'dist-renderer', 'index.html'));
+  win.loadFile(path.join(__dirname, '..', 'dist-renderer', 'index.html'), app.isPackaged ? undefined : { query: { debug: '1' } });
   win.once('ready-to-show', () => win.showInactive());
 
-  // Dev/CI smoke test: CLIPPY_SMOKE=<png path> captures the window after a few seconds, then exits.
-  if (process.env.CLIPPY_SMOKE && !app.isPackaged) {
+  // Dev/CI smoke test. CLIPPY_SMOKE=<png path> captures the idle window, then exits.
+  // CLIPPY_SMOKE_STATES="happy@400,shocked@250" (with CLIPPY_SMOKE_DIR) plays each state and captures it after N ms.
+  if (process.env.CLIPPY_SMOKE_STATES && !app.isPackaged) {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    win.webContents.once('did-finish-load', async () => {
+      await sleep(2500);
+      const dir = process.env.CLIPPY_SMOKE_DIR || '.';
+      let i = 0;
+      for (const spec of process.env.CLIPPY_SMOKE_STATES.split(',')) {
+        const [id, at] = spec.split('@');
+        send('debug:play', { id: 'stop' });
+        await sleep(1500);
+        send('debug:play', { id, duration: 8 });
+        const steps = Math.max(1, Math.floor((Number(at) || 500) / 500));
+        for (let k = 0; k < steps; k++) {
+          await sleep((Number(at) || 500) / steps);
+          if (process.env.CLIPPY_SMOKE_TRACE) console.log('[trace]', id, k, await win.webContents.executeJavaScript('window.__clippy && window.__clippy.machine.current'));
+        }
+        const img = await win.webContents.capturePage();
+        const file = path.join(dir, `${String(++i).padStart(2, '0')}-${id}-${at}.png`);
+        fs.writeFileSync(file, img.toPNG());
+        console.log('[smoke] captured', file);
+      }
+      app.exit(0);
+    });
+  } else if (process.env.CLIPPY_SMOKE && !app.isPackaged) {
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
       const img = await win.webContents.capturePage();
       fs.writeFileSync(process.env.CLIPPY_SMOKE, img.toPNG());
@@ -163,6 +187,17 @@ function createTray() {
     { label: `Clippy Desktop v${app.getVersion()}`, enabled: false },
     { label: 'Show / hide', click: toggle },
     { label: 'Check for updates', click: () => { win.showInactive(); checkForUpdates(true); } },
+    {
+      label: 'Play animation',
+      submenu: [
+        ...['curious', 'happy', 'thinking', 'talking', 'sleeping', 'shocked'].map((id) => ({
+          label: id[0].toUpperCase() + id.slice(1),
+          click: () => { win.showInactive(); send('debug:play', { id, duration: id === 'talking' ? 4 : undefined }); },
+        })),
+        { type: 'separator' },
+        { label: 'Stop', click: () => send('debug:play', { id: 'stop' }) },
+      ],
+    },
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() },
   ]));

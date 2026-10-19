@@ -17,6 +17,8 @@ export interface ClippyBridge {
   dragEnd(): void;
   onCursor(cb: (pos: { x: number; y: number }) => void): void;
   onUpdateStatus(cb: (status: UpdateStatus) => void): void;
+  /** Tray debug menu: play an animation state ('stop' fades the current one out). */
+  onPlay(cb: (req: { id: string; duration?: number }) => void): void;
 }
 
 declare global {
