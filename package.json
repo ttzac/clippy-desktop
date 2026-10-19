@@ -38,8 +38,7 @@
       {
         "provider": "github",
         "owner": "ttzac",
-        "repo": "clippy-desktop",
-        "private": true
+        "repo": "clippy-desktop"
       }
     ]
   },

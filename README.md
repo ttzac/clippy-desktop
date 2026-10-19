@@ -148,11 +148,9 @@ npm run typecheck
 2. `git tag v0.1.1 && git push --follow-tags`.
 3. The `Release` workflow builds the Windows installer and publishes it plus `latest.yml`. Installed apps check on launch and every 4 hours, download in the background, and install on quit (or via "Restart to update").
 
-### Private repo
+### Updates and tokens
 
-Installed apps need a read-only token to fetch releases. Use a fine-grained PAT (this repo, `Contents: Read`) via env var `GH_TOKEN`
-or `%APPDATA%\Clippy Desktop\config.json`: `{ "updateToken": "github_pat_..." }`. Automatic checks fail silently without it;
-manual checks (tray menu) show the error. Making the repo public and removing `"private": true` from the `publish` block removes the need.
+The repo is public, so installed apps fetch releases with no token. If you fork this and make your fork private, add `"private": true` back to the `publish` block in `package.json` and give each machine a read-only token (env var `GH_TOKEN`, or `%APPDATA%Clippy Desktopconfig.json`: `{ "updateToken": "..." }`).
 
 Installers are unsigned, so Windows SmartScreen warns on first install.
 

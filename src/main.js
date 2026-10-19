@@ -60,7 +60,7 @@ function initialPosition() {
 }
 
 // ---------- updater token (private repo) ----------
-// Provide it via GH_TOKEN or {userData}/config.json: { "updateToken": "..." }
+// Only needed if the repo is private. Provide it via GH_TOKEN or {userData}/config.json: { "updateToken": "..." }
 function loadUpdateToken() {
   if (process.env.GH_TOKEN) return;
   try {
