@@ -5,6 +5,8 @@ import { StateMachine, type Env } from './animation/StateMachine';
 import { ALL_STATES } from './animation/states';
 import { ClippyRig } from './character/ClippyRig';
 import { PixiFx } from './effects/PixiFx';
+import { CATEGORIES, LINES } from './personality/lines';
+import { Personality } from './personality/Personality';
 import { Bubble } from './ui/bubble';
 import type { UpdateStatus } from './env';
 
@@ -15,6 +17,12 @@ const CLICK_MAX_MS = 450;
 const SPAM_CLICKS = 3; // this many clicks inside SPAM_WINDOW_MS startles Clippy
 const SPAM_WINDOW_MS = 1000;
 const SLEEP_AFTER_S = 120; // no cursor movement for this long -> nod off
+const IDLE_QUIP_S = 45; // ...and this long -> a remark, before dozing off
+const SESSION_QUIP_S = 90 * 60; // active this long -> a gentle break reminder
+const AMBIENT_EVERY_S: [number, number] = [180, 420];
+const GOODBYE_MS = 2000;
+const readMs = (text: string) => Math.min(9000, 3200 + text.length * 55);
+const between = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 const talkSeconds = (text: string) => Math.min(6, 0.7 + text.length * 0.045);
 
 async function boot() {
@@ -39,18 +47,34 @@ async function boot() {
   const env: Env = { cursor: () => ctrl.cursorOffset(), anchor: (n) => rig.anchor(n), fx };
   const machine = new StateMachine(ALL_STATES, env);
   const bubble = new Bubble(() => bridge?.installUpdate());
+  const personality = new Personality(LINES, CATEGORIES);
+  bridge?.getSettings().then((s) => personality.setLevel(s.chattiness));
+  bridge?.onSettings((s) => personality.setLevel(s.chattiness));
 
-  if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { __clippy: { machine, ctrl, fx } });
-
+  let idleQuipped = false;
+  let nextAmbientAt = performance.now() / 1000 + between(...AMBIENT_EVERY_S);
+  let nextSessionAt = performance.now() / 1000 + SESSION_QUIP_S;
   let manualSleep = false; // sleeping chosen from the tray menu stays until clicked or stopped
   let lastActivity = performance.now() / 1000;
-  const touch = () => { lastActivity = performance.now() / 1000; };
+  const touch = () => {
+    lastActivity = performance.now() / 1000;
+    idleQuipped = false;
+  };
+
+  /** Ask the personality engine for a line in this category and speak it, if it decides to. */
+  const chat = (category: string, force = false): string | null => {
+    const line = personality.say(category, { hour: new Date().getHours(), force });
+    if (line) speak(line, { ms: readMs(line) });
+    return line;
+  };
 
   /** Say something: show the bubble and animate the mouth for as long as it takes to "read" it. */
   const speak = (message: string, opts?: Parameters<Bubble['say']>[1]) => {
     bubble.say(message, opts);
     machine.request('talking', { duration: talkSeconds(message) });
   };
+
+  if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { __clippy: { machine, ctrl, fx, personality, chat } });
 
   // ---- animation loop: 60 fps while anything needs it, 30 when settled ----
   app.ticker.add((ticker) => {
@@ -60,8 +84,25 @@ async function boot() {
     fx.update(dt);
     rig.render(machine.apply(base));
 
-    const idleFor = performance.now() / 1000 - lastActivity;
-    if (idleFor > SLEEP_AFTER_S && machine.current === null) machine.request('sleeping');
+    const nowS = performance.now() / 1000;
+    const idleFor = nowS - lastActivity;
+    if (idleFor > SLEEP_AFTER_S && machine.current === null) {
+      if (machine.request('sleeping')) chat('sleepStart');
+    } else if (idleFor > IDLE_QUIP_S && !idleQuipped && machine.current === null) {
+      idleQuipped = true;
+      chat('idle');
+    }
+    // Spontaneous remarks only while the user is around and nothing else is going on.
+    if (idleFor < 30 && machine.current === null && !bubble.visible) {
+      if (nowS > nextAmbientAt) {
+        nextAmbientAt = nowS + between(...AMBIENT_EVERY_S);
+        chat('ambient');
+      }
+      if (nowS > nextSessionAt) {
+        nextSessionAt = nowS + SESSION_QUIP_S;
+        chat('session');
+      }
+    }
 
     app.ticker.maxFPS = ctrl.active || machine.needsFullRate || (fx.count > 0 && machine.current !== 'sleeping') ? 60 : 30;
   });
@@ -74,7 +115,10 @@ async function boot() {
   bridge?.onCursor((p) => {
     feedCursor(p.x, p.y);
     touch();
-    if (machine.current === 'sleeping' && !manualSleep) machine.stop('sleeping'); // user is back: wake gently
+    if (machine.current === 'sleeping' && !manualSleep) {
+      machine.stop('sleeping'); // user is back: wake gently
+      chat('wake');
+    }
   });
 
   // ---- click-through: only the character and bubble catch the mouse ----
@@ -102,6 +146,7 @@ async function boot() {
   window.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || !overCharacter(e.clientX, e.clientY)) return;
     touch();
+    personality.noteInteraction();
     press = { sx: e.screenX, sy: e.screenY, at: performance.now(), dragging: false, lastX: e.screenX, lastT: performance.now(), vx: 0 };
     (e.target as Element).setPointerCapture?.(e.pointerId);
   });
@@ -116,6 +161,7 @@ async function boot() {
         bridge?.dragStart();
         ctrl.beginDrag();
         machine.request('dragging', { force: true });
+        chat('dragStart');
       }
       if (press.dragging) {
         const now = performance.now();
@@ -133,8 +179,11 @@ async function boot() {
     if (over !== hovered) {
       hovered = over;
       ctrl.setHovered(over);
-      if (over) machine.request('curious', { duration: 6 });
-      else machine.stop('curious');
+      if (over) {
+        machine.request('curious', { duration: 6 });
+        personality.noteInteraction();
+        chat('hover');
+      } else machine.stop('curious');
     }
     if (!bridge) feedCursor(e.clientX, e.clientY); // browser preview has no global cursor
   });
@@ -147,18 +196,35 @@ async function boot() {
       bridge?.dragEnd();
       ctrl.endDrag();
       machine.stop('dragging');
+      chat('drop');
     } else if (performance.now() - p.at < CLICK_MAX_MS) {
       const now = performance.now();
       clicks.push(now);
       while (clicks.length && now - clicks[0] > SPAM_WINDOW_MS) clicks.shift();
+      const wasSleeping = machine.current === 'sleeping';
       if (clicks.length >= SPAM_CLICKS) {
         clicks.length = 0;
         machine.request('shocked');
-      } else machine.request('happy');
+        chat('clickSpam');
+      } else {
+        machine.request('happy');
+        chat(wasSleeping ? 'startled' : 'click'); // a click on a sleeper startles it awake
+      }
     }
   };
   window.addEventListener('pointerup', release);
   window.addEventListener('pointercancel', release);
+
+  // ---- tray: say something on request, graceful quit ----
+  bridge?.onSay(({ category }) => {
+    touch();
+    const pool = category.split('+');
+    chat(pool[Math.floor(Math.random() * pool.length)], true);
+  });
+  bridge?.onClosing(() => {
+    const line = chat('quit');
+    window.setTimeout(() => bridge.quitNow(), line ? GOODBYE_MS : 0);
+  });
 
   // ---- tray debug menu: play any state ----
   bridge?.onPlay(({ id, duration }) => {
@@ -173,16 +239,24 @@ async function boot() {
   bridge?.onUpdateStatus((s: UpdateStatus) => {
     switch (s.state) {
       case 'checking': if (s.manual) bubble.say('Looking for updates...'); break;
-      case 'available': speak(`Update v${s.version} found. Downloading in the background.`); break;
+      case 'available': {
+        const line = chat('updateAvailable');
+        if (line) bubble.say(`${line} (v${s.version})`, { ms: readMs(line) + 1500 });
+        break;
+      }
       case 'downloading': if (s.manual) bubble.say(`Downloading update: ${s.percent}%`, { ms: 1500 }); break;
-      case 'ready': speak(`v${s.version} is ready. Restart to install.`, { sticky: true, restart: true }); break;
-      case 'none': if (s.manual) speak("You're up to date. Disappointing, I know."); break;
+      case 'ready': {
+        const line = personality.say('updateReady') ?? 'Update ready.'; // essential: always speaks
+        speak(`${line} (v${s.version})`, { sticky: true, restart: true });
+        break;
+      }
+      case 'none': if (s.manual) chat('upToDate', true); break;
       case 'dev': bubble.say(s.message ?? 'Updates are disabled in dev mode.'); break;
       case 'error': if (s.manual) bubble.say(`Update error: ${s.message}`, { ms: 8000 }); break;
     }
   });
 
-  speak("It looks like you're building a desktop assistant. I'll supervise.", { ms: 4500 });
+  chat('startup');
 }
 
 boot().catch((err) => console.error('Clippy failed to start', err));

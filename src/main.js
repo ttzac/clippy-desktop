@@ -13,19 +13,28 @@ let tray = null;
 let manualCheck = false;
 let dragOrigin = null;
 
-// ---------- settings (last position) ----------
+// ---------- settings (position, chattiness) ----------
+const DEFAULTS = { chattiness: 'normal' };
+const CHATTINESS = [['quiet', 'Quiet (no chatter)'], ['low', 'Low'], ['normal', 'Normal'], ['high', 'Chatty']];
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 
 function loadSettings() {
-  try { return JSON.parse(fs.readFileSync(settingsPath(), 'utf8')); } catch { return {}; }
+  try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) }; } catch { return { ...DEFAULTS }; }
 }
 
 let saveTimer = null;
+let pendingSettings = {};
 function saveSettings(patch) {
+  pendingSettings = { ...pendingSettings, ...patch }; // accumulate, so two quick changes can't drop one
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try { fs.writeFileSync(settingsPath(), JSON.stringify({ ...loadSettings(), ...patch })); } catch { /* ignore */ }
-  }, 250);
+  saveTimer = setTimeout(flushSettings, 250);
+}
+
+function flushSettings() {
+  clearTimeout(saveTimer);
+  if (!Object.keys(pendingSettings).length) return;
+  try { fs.writeFileSync(settingsPath(), JSON.stringify({ ...loadSettings(), ...pendingSettings })); } catch { /* ignore */ }
+  pendingSettings = {};
 }
 
 // Restore the saved spot only if it is still on a connected display.
@@ -95,16 +104,25 @@ function createWindow() {
         const [id, at] = spec.split('@');
         send('debug:play', { id: 'stop' });
         await sleep(1500);
-        send('debug:play', { id, duration: 8 });
+        if (id.startsWith('say:')) await win.webContents.executeJavaScript(`window.__clippy.chat(${JSON.stringify(id.slice(4))}, true)`);
+        else send('debug:play', { id, duration: 8 });
         const steps = Math.max(1, Math.floor((Number(at) || 500) / 500));
         for (let k = 0; k < steps; k++) {
           await sleep((Number(at) || 500) / steps);
           if (process.env.CLIPPY_SMOKE_TRACE) console.log('[trace]', id, k, await win.webContents.executeJavaScript('window.__clippy && window.__clippy.machine.current'));
         }
         const img = await win.webContents.capturePage();
-        const file = path.join(dir, `${String(++i).padStart(2, '0')}-${id}-${at}.png`);
+        const file = path.join(dir, `${String(++i).padStart(2, '0')}-${id.replace(/\W/g, '_')}-${at}.png`);
         fs.writeFileSync(file, img.toPNG());
         console.log('[smoke] captured', file);
+      }
+      if (process.env.CLIPPY_SMOKE_QUIT) {
+        const t0 = Date.now();
+        app.on('will-quit', () => console.log('[smoke] quit after', Date.now() - t0, 'ms'));
+        requestQuit();
+        await sleep(700);
+        fs.writeFileSync(path.join(dir, 'quit.png'), (await win.webContents.capturePage()).toPNG());
+        return;
       }
       app.exit(0);
     });
@@ -156,7 +174,9 @@ function registerWindowIpc() {
     saveSettings({ x, y });
   });
   ipcMain.handle('app:version', () => app.getVersion());
+  ipcMain.handle('settings:get', () => ({ ...loadSettings(), ...pendingSettings }));
   ipcMain.on('app:quit', () => app.quit());
+  ipcMain.on('app:quit-now', () => app.quit());
 }
 
 // ---------- tray ----------
@@ -179,13 +199,39 @@ function trayIcon() {
   return nativeImage.createFromBitmap(buf, { width: size, height: size });
 }
 
+// Quit with a goodbye line: ask the renderer, which replies with app:quit-now when it has finished talking.
+let closing = false;
+function requestQuit() {
+  if (closing || !win || win.isDestroyed()) return app.quit();
+  closing = true;
+  send('app:closing');
+  setTimeout(() => app.quit(), 3000); // fallback if the renderer never answers
+}
+
+function setChattiness(level) {
+  saveSettings({ chattiness: level });
+  send('settings:changed', { chattiness: level });
+  buildTrayMenu();
+}
+
 function createTray() {
   tray = new Tray(trayIcon());
   tray.setToolTip(`Clippy Desktop v${app.getVersion()}`);
+  tray.on('click', () => (win.isVisible() ? win.hide() : win.showInactive()));
+  buildTrayMenu();
+}
+
+function buildTrayMenu() {
+  const current = { ...loadSettings(), ...pendingSettings }.chattiness;
   const toggle = () => (win.isVisible() ? win.hide() : win.showInactive());
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: `Clippy Desktop v${app.getVersion()}`, enabled: false },
     { label: 'Show / hide', click: toggle },
+    { label: 'Say something', click: () => { win.showInactive(); send('personality:say', { category: 'ambient+wisdom' }); } },
+    {
+      label: 'Chattiness',
+      submenu: CHATTINESS.map(([id, label]) => ({ label, type: 'radio', checked: current === id, click: () => setChattiness(id) })),
+    },
     { label: 'Check for updates', click: () => { win.showInactive(); checkForUpdates(true); } },
     {
       label: 'Play animation',
@@ -199,9 +245,8 @@ function createTray() {
       ],
     },
     { type: 'separator' },
-    { label: 'Quit', click: () => app.quit() },
+    { label: 'Quit', click: requestQuit },
   ]));
-  tray.on('click', toggle);
 }
 
 // ---------- auto-update ----------
@@ -250,4 +295,5 @@ if (!app.requestSingleInstanceLock()) {
     setupAutoUpdate();
   });
   app.on('window-all-closed', () => app.quit());
+  app.on('before-quit', flushSettings);
 }

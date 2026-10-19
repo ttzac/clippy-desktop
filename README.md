@@ -26,6 +26,7 @@ src/renderer/
   animation/            Spring, Controller (idle + drag/landing -> base Pose), StateMachine (pure, tested),
                         states/ (interaction, ai, ambient), ease helpers
   effects/PixiFx.ts     pooled particles (sparkles, Zs, "!", shock lines) + thought-bubble prop
+  personality/          Personality (pure, tested: cooldowns, repetition, spacing, backoff, levels), lines (dialogue by trigger)
   ui/bubble.ts          speech bubble
   main.ts               boot, render loop, input, updater wiring
 ```
@@ -57,7 +58,9 @@ settled. The main process polls the cursor at 20 Hz and only sends changes. Not 
 | Thinking "scratches head" (needs an arm/hand), typing keyboard, waking stretch | Not done: thinking is gaze + sway + thought cloud only |
 | Remaining states: laughing, typing, waking, angry, confused, sad, dancing, falling, landing (partly in Controller), hiding, peeking, celebrating, listening, error, victory | **Not started** |
 | Steam, confetti, sparks, question marks, sunglasses accessory | Not started |
-| Personality engine (100+ lines, cooldowns, triggers) | Not started |
+| Personality engine: 118 original lines in 23 trigger categories, per-category cooldowns, shuffle-bag + least-recently-said repetition prevention, global spacing, backoff when ignored, 4 chattiness levels persisted from the tray menu, time-of-day greetings, goodbye on quit | Done, 17 unit tests |
+| Personality triggers wired: startup, click, click-spam, hover, drag, drop, startled-awake, idle, sleep, wake, ambient, long session, update available/ready/up-to-date, quit, tray "Say something" | Done |
+| Personality lines written but not yet triggered: code editor opened, app crash, task complete (need permission-based desktop awareness), AI thinking/simple/error (Phase 6) | Pending |
 | AI chat, streaming, provider layer, voice, approvals | Not started |
 | Fullscreen-app detection, multi-monitor testing, start with Windows, size setting, quiet mode | Not started |
 | Asset validation script, audio | N/A yet (no raster assets; the character is procedural) |
@@ -77,3 +80,7 @@ or `%APPDATA%\Clippy Desktop\config.json`: `{ "updateToken": "github_pat_..." }`
 manual checks (tray menu) show the error. Making the repo public and removing `"private": true` from the `publish` block removes the need.
 
 Installers are unsigned, so Windows SmartScreen warns on first install.
+
+## Personality
+
+Chattiness (tray menu > Chattiness, saved in `settings.json`): **Quiet** speaks only when it must (update-ready, "Say something"); **Low**, **Normal** and **Chatty** scale how often reactions fire and how far apart spontaneous remarks are (180s / 75s / 30s minimum, growing up to 4x while the user ignores them, reset on any interaction). Add dialogue in `src/renderer/personality/lines.ts`; every category needs a config entry (a test enforces this, plus 100+ unique lines under 120 characters).
